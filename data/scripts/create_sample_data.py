@@ -1,6 +1,6 @@
 """
-Create Realistic Sample NBA Data for Demo
-Generates synthetic but realistic NBA player game logs for demonstration purposes
+Sample Data Generator
+Creates fake but realistic NBA data for demo purposes
 """
 
 import pandas as pd
@@ -9,14 +9,13 @@ from datetime import datetime, timedelta
 import os
 import random
 
-# Seed for reproducibility
+# So we get the same "random" data every time
 np.random.seed(42)
 random.seed(42)
 
-# Output directory
 OUTPUT_DIR = os.path.join('data', 'raw')
 
-# NBA Teams
+# All 30 NBA teams
 NBA_TEAMS = [
     {'id': 1610612737, 'abbrev': 'ATL', 'name': 'Atlanta Hawks'},
     {'id': 1610612738, 'abbrev': 'BOS', 'name': 'Boston Celtics'},
@@ -50,16 +49,16 @@ NBA_TEAMS = [
     {'id': 1610612764, 'abbrev': 'WAS', 'name': 'Washington Wizards'},
 ]
 
-# Sample Players (realistic archetypes)
+# Made up players across different skill tiers
 SAMPLE_PLAYERS = [
-    # Star scorers (25-30 PPG)
+    # Stars - the big scorers
     {'id': 201566, 'name': 'Marcus Johnson', 'team': 'LAL', 'position': 'SF', 'tier': 'star'},
     {'id': 201567, 'name': 'DeShawn Williams', 'team': 'BOS', 'position': 'SG', 'tier': 'star'},
     {'id': 201568, 'name': 'Tyler Anderson', 'team': 'MIL', 'position': 'PF', 'tier': 'star'},
     {'id': 201569, 'name': 'Kevin Thompson', 'team': 'PHX', 'position': 'PG', 'tier': 'star'},
     {'id': 201570, 'name': 'Jordan Mitchell', 'team': 'DEN', 'position': 'C', 'tier': 'star'},
 
-    # Quality starters (18-24 PPG)
+    # Solid starters
     {'id': 201571, 'name': 'Chris Davis', 'team': 'GSW', 'position': 'SG', 'tier': 'starter'},
     {'id': 201572, 'name': 'Marcus Brown', 'team': 'MIA', 'position': 'SF', 'tier': 'starter'},
     {'id': 201573, 'name': 'Anthony Harris', 'team': 'DAL', 'position': 'PG', 'tier': 'starter'},
@@ -71,7 +70,7 @@ SAMPLE_PLAYERS = [
     {'id': 201579, 'name': 'James Moore', 'team': 'TOR', 'position': 'PF', 'tier': 'starter'},
     {'id': 201580, 'name': 'William Jackson', 'team': 'MIN', 'position': 'C', 'tier': 'starter'},
 
-    # Rotation players (12-17 PPG)
+    # Role players
     {'id': 201581, 'name': 'Daniel White', 'team': 'OKC', 'position': 'SG', 'tier': 'rotation'},
     {'id': 201582, 'name': 'Matthew Martin', 'team': 'SAC', 'position': 'SF', 'tier': 'rotation'},
     {'id': 201583, 'name': 'Andrew Garcia', 'team': 'POR', 'position': 'PG', 'tier': 'rotation'},
@@ -83,7 +82,7 @@ SAMPLE_PLAYERS = [
     {'id': 201589, 'name': 'Brandon Hall', 'team': 'CHA', 'position': 'PF', 'tier': 'rotation'},
     {'id': 201590, 'name': 'Justin Allen', 'team': 'WAS', 'position': 'C', 'tier': 'rotation'},
 
-    # Bench players (6-11 PPG)
+    # Bench guys
     {'id': 201591, 'name': 'Eric Young', 'team': 'UTA', 'position': 'SG', 'tier': 'bench'},
     {'id': 201592, 'name': 'Steven King', 'team': 'MEM', 'position': 'SF', 'tier': 'bench'},
     {'id': 201593, 'name': 'Patrick Wright', 'team': 'SAS', 'position': 'PG', 'tier': 'bench'},
@@ -96,7 +95,7 @@ SAMPLE_PLAYERS = [
     {'id': 201600, 'name': 'Owen Mitchell', 'team': 'DEN', 'position': 'C', 'tier': 'bench'},
 ]
 
-# Player tier stats (avg PTS, REB, AST, STL, BLK, TOV, MIN, FG%, 3P%, FT%)
+# Average stats by player tier - (mean, std_dev)
 TIER_STATS = {
     'star': {
         'PTS': (26, 4), 'REB': (7, 2.5), 'AST': (6, 2), 'STL': (1.3, 0.5),
@@ -122,25 +121,24 @@ TIER_STATS = {
 
 
 def generate_game_stats(player, game_date, opponent, is_home, days_rest, season):
-    """Generate realistic game stats for a player"""
+    """Generate a single game's worth of stats for a player"""
     tier = player['tier']
     stats = TIER_STATS[tier]
 
-    # Base stats with variance
+    # Minutes played (capped at 42)
     min_played = max(5, np.random.normal(stats['MIN'][0], stats['MIN'][1]))
-    min_played = min(42, min_played)  # Cap at 42 minutes
+    min_played = min(42, min_played)
 
-    # Adjust for rest days
+    # Adjustments for rest and home/away
     rest_factor = 1.0
-    if days_rest == 0:  # Back to back
+    if days_rest == 0:  # back to back - tired
         rest_factor = 0.92
-    elif days_rest >= 3:  # Well rested
+    elif days_rest >= 3:  # well rested
         rest_factor = 1.03
 
-    # Adjust for home/away
     home_factor = 1.02 if is_home else 0.98
 
-    # Generate counting stats
+    # Generate the counting stats
     pts = max(0, np.random.normal(stats['PTS'][0], stats['PTS'][1]) * rest_factor * home_factor)
     reb = max(0, np.random.normal(stats['REB'][0], stats['REB'][1]) * rest_factor)
     ast = max(0, np.random.normal(stats['AST'][0], stats['AST'][1]) * rest_factor)
@@ -148,13 +146,12 @@ def generate_game_stats(player, game_date, opponent, is_home, days_rest, season)
     blk = max(0, np.random.normal(stats['BLK'][0], stats['BLK'][1]))
     tov = max(0, np.random.normal(stats['TOV'][0], stats['TOV'][1]))
 
-    # Generate shooting percentages
+    # Shooting percentages
     fg_pct = np.clip(np.random.normal(stats['FG_PCT'][0], stats['FG_PCT'][1]), 0.25, 0.70)
     fg3_pct = np.clip(np.random.normal(stats['FG3_PCT'][0], stats['FG3_PCT'][1]), 0.15, 0.55)
     ft_pct = np.clip(np.random.normal(stats['FT_PCT'][0], stats['FT_PCT'][1]), 0.50, 0.95)
 
-    # Calculate shot attempts from points and percentages
-    # Assume ~40% of points from FT, ~30% from 3PT, ~30% from 2PT
+    # Work backwards from points to get shot attempts
     fta = int(pts * 0.15 / ft_pct) if ft_pct > 0 else 0
     ftm = int(fta * ft_pct)
 
@@ -168,18 +165,16 @@ def generate_game_stats(player, game_date, opponent, is_home, days_rest, season)
     fga = fg2a + fg3a
     fgm = fg2m + fg3m
 
-    # Recalculate actual FG%
     actual_fg_pct = fgm / fga if fga > 0 else 0
     actual_fg3_pct = fg3m / fg3a if fg3a > 0 else 0
     actual_ft_pct = ftm / fta if fta > 0 else 0
 
-    # Calculate actual points
     actual_pts = (fg2m * 2) + (fg3m * 3) + ftm
 
-    # Plus/minus (random but correlated with performance)
+    # Plus/minus (somewhat correlated with how well they played)
     plus_minus = int(np.random.normal((actual_pts - stats['PTS'][0]) * 0.5, 10))
 
-    # Create matchup string
+    # Build the matchup string
     team_abbrev = player['team']
     if is_home:
         matchup = f"{team_abbrev} vs. {opponent}"
@@ -224,7 +219,7 @@ def generate_game_stats(player, game_date, opponent, is_home, days_rest, season)
 
 
 def generate_player_game_logs():
-    """Generate player game logs for multiple seasons"""
+    """Generate game logs for all players across multiple seasons"""
     print("Generating player game logs...")
 
     all_games = []
@@ -233,7 +228,6 @@ def generate_player_game_logs():
     for season in seasons:
         print(f"  Generating season {season}...")
 
-        # Season dates
         if season == '2023-24':
             start_date = datetime(2023, 10, 24)
             end_date = datetime(2024, 4, 14)
@@ -241,35 +235,30 @@ def generate_player_game_logs():
             start_date = datetime(2024, 10, 22)
             end_date = datetime(2025, 4, 13)
 
-        # Generate ~70 games per player per season
-        games_per_player = 70
+        games_per_player = 70  # roughly a full season
 
         for player in SAMPLE_PLAYERS:
-            # Generate game dates (roughly every 2-3 days)
             current_date = start_date
             prev_game_date = None
             games_count = 0
 
             while current_date < end_date and games_count < games_per_player:
-                # Skip some dates randomly (off days, injuries)
+                # Skip some games (rest days, minor injuries)
                 if random.random() < 0.15:
                     current_date += timedelta(days=1)
                     continue
 
-                # Calculate rest days
                 if prev_game_date:
                     days_rest = (current_date - prev_game_date).days - 1
                 else:
                     days_rest = 3
 
-                # Random opponent (not own team)
+                # Pick a random opponent
                 opponents = [t['abbrev'] for t in NBA_TEAMS if t['abbrev'] != player['team']]
                 opponent = random.choice(opponents)
 
-                # Home or away
                 is_home = random.random() < 0.5
 
-                # Generate game
                 game = generate_game_stats(player, current_date, opponent, is_home, days_rest, season)
                 all_games.append(game)
 
@@ -286,7 +275,7 @@ def generate_player_game_logs():
 
 
 def generate_team_stats():
-    """Generate team statistics"""
+    """Generate team-level stats for each season"""
     print("Generating team stats...")
 
     all_stats = []
@@ -294,7 +283,6 @@ def generate_team_stats():
 
     for season in seasons:
         for team in NBA_TEAMS:
-            # Generate realistic team stats
             wins = random.randint(20, 60)
             losses = 82 - wins
 
@@ -322,7 +310,7 @@ def generate_team_stats():
 
 
 def generate_games_schedule():
-    """Generate games schedule"""
+    """Generate a schedule of games"""
     print("Generating games schedule...")
 
     all_games = []
@@ -341,10 +329,8 @@ def generate_games_schedule():
         current_date = start_date
 
         while current_date < end_date:
-            # Generate 5-15 games per day
             games_today = random.randint(5, 15)
 
-            # Shuffle teams for matchups
             teams_copy = NBA_TEAMS.copy()
             random.shuffle(teams_copy)
 
@@ -376,13 +362,11 @@ def generate_games_schedule():
 
 
 def save_data(player_logs, team_stats, games):
-    """Save generated data to CSV files"""
+    """Save all the generated data to CSV files"""
     print("\nSaving data...")
 
-    # Ensure directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Save files
     player_logs.to_csv(os.path.join(OUTPUT_DIR, 'player_game_logs.csv'), index=False)
     print(f"  Saved: {OUTPUT_DIR}/player_game_logs.csv")
 
@@ -394,21 +378,18 @@ def save_data(player_logs, team_stats, games):
 
 
 def main():
-    """Main function to generate all sample data"""
+    """Generate all the sample data"""
     print("=" * 60)
     print("NBA SAMPLE DATA GENERATOR")
     print("=" * 60)
     print()
 
-    # Generate data
     player_logs = generate_player_game_logs()
     team_stats = generate_team_stats()
     games = generate_games_schedule()
 
-    # Save data
     save_data(player_logs, team_stats, games)
 
-    # Summary
     print()
     print("=" * 60)
     print("DATA GENERATION COMPLETE")

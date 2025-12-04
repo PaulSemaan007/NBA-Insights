@@ -1,6 +1,6 @@
 """
-Transformer Model for NBA Player Performance Prediction
-Uses attention mechanisms to process game sequences and contextual features
+Transformer Model for NBA Player Prediction
+Uses attention to figure out which games in the sequence matter most
 """
 
 import torch
@@ -10,14 +10,14 @@ import math
 
 class PositionalEncoding(nn.Module):
     """
-    Positional encoding for transformer
-    Adds position information to the input embeddings
+    Adds position info to the input since transformers don't have
+    any built-in sense of order (unlike LSTMs)
     """
 
     def __init__(self, d_model, max_len=100):
         super(PositionalEncoding, self).__init__()
 
-        # Create positional encoding matrix
+        # Standard sinusoidal encoding from "Attention is All You Need"
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
@@ -25,28 +25,19 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        pe = pe.unsqueeze(0)  # Shape: (1, max_len, d_model)
+        pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        """
-        Args:
-            x: Tensor of shape (batch_size, seq_len, d_model)
-
-        Returns:
-            Tensor with positional encoding added
-        """
         return x + self.pe[:, :x.size(1), :]
 
 
 class PlayerTransformer(nn.Module):
     """
-    Transformer model for NBA player performance prediction
+    Basic transformer for player prediction
 
-    Uses self-attention to identify relationships between:
-    - Recent game performances
-    - Contextual factors (opponent, rest, home/away)
-    - Historical patterns
+    Uses self-attention to look at relationships between games
+    in the sequence. Mean pooling at the end to aggregate.
     """
 
     def __init__(
@@ -60,14 +51,10 @@ class PlayerTransformer(nn.Module):
         output_size=4
     ):
         """
-        Args:
-            input_size: Number of input features
-            d_model: Dimension of model (must be divisible by nhead)
-            nhead: Number of attention heads
-            num_encoder_layers: Number of transformer encoder layers
-            dim_feedforward: Dimension of feedforward network
-            dropout: Dropout rate
-            output_size: Number of output predictions
+        input_size: number of features per game
+        d_model: transformer hidden dimension
+        nhead: number of attention heads
+        num_encoder_layers: how many transformer layers to stack
         """
         super(PlayerTransformer, self).__init__()
 
@@ -75,13 +62,12 @@ class PlayerTransformer(nn.Module):
         self.d_model = d_model
         self.output_size = output_size
 
-        # Input projection layer
+        # Project input features to d_model dimensions
         self.input_projection = nn.Linear(input_size, d_model)
 
-        # Positional encoding
         self.pos_encoder = PositionalEncoding(d_model)
 
-        # Transformer encoder
+        # PyTorch's built-in transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -94,7 +80,7 @@ class PlayerTransformer(nn.Module):
             num_layers=num_encoder_layers
         )
 
-        # Output layers
+        # Output head
         self.fc1 = nn.Linear(d_model, d_model // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(d_model // 2, d_model // 4)
@@ -106,31 +92,22 @@ class PlayerTransformer(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass
-
-        Args:
-            x: Input tensor of shape (batch_size, sequence_length, input_size)
-
-        Returns:
-            Predictions of shape (batch_size, output_size)
+        x shape: (batch, seq_len, input_size)
+        returns: (batch, output_size)
         """
-        # Project input to d_model dimensions
-        # x shape: (batch_size, seq_len, d_model)
+        # Project to d_model
         x = self.input_projection(x)
 
-        # Add positional encoding
+        # Add position encoding
         x = self.pos_encoder(x)
 
-        # Pass through transformer encoder
-        # encoded shape: (batch_size, seq_len, d_model)
+        # Run through transformer
         encoded = self.transformer_encoder(x)
 
-        # Use the last time step or average pooling
-        # Here we'll use mean pooling across sequence
-        # pooled shape: (batch_size, d_model)
+        # Average pool across sequence
         pooled = encoded.mean(dim=1)
 
-        # Fully connected layers
+        # Dense layers
         out = self.fc1(pooled)
         out = self.bn1(out)
         out = F.relu(out)
@@ -141,13 +118,11 @@ class PlayerTransformer(nn.Module):
         out = F.relu(out)
         out = self.dropout2(out)
 
-        # Output layer
         out = self.fc3(out)
 
         return out
 
     def predict(self, x):
-        """Make predictions"""
         self.eval()
         with torch.no_grad():
             predictions = self.forward(x)
@@ -156,8 +131,11 @@ class PlayerTransformer(nn.Module):
 
 class PlayerTransformerClassToken(nn.Module):
     """
-    Transformer with CLS token (similar to BERT)
-    Uses a special classification token for aggregating sequence information
+    Transformer with CLS token - this is what we actually use
+
+    Similar to BERT, we prepend a special "classification" token
+    to the sequence and use its output as the representation.
+    This tends to work better than mean pooling.
     """
 
     def __init__(
@@ -176,16 +154,13 @@ class PlayerTransformerClassToken(nn.Module):
         self.d_model = d_model
         self.output_size = output_size
 
-        # Input projection
         self.input_projection = nn.Linear(input_size, d_model)
 
-        # CLS token (learnable)
+        # Learnable CLS token (randomly initialized)
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
 
-        # Positional encoding
         self.pos_encoder = PositionalEncoding(d_model)
 
-        # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -198,7 +173,6 @@ class PlayerTransformerClassToken(nn.Module):
             num_layers=num_encoder_layers
         )
 
-        # Output layers
         self.fc1 = nn.Linear(d_model, d_model // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(d_model // 2, d_model // 4)
@@ -212,31 +186,28 @@ class PlayerTransformerClassToken(nn.Module):
         """
         Forward pass with CLS token
 
-        Args:
-            x: Input tensor of shape (batch_size, sequence_length, input_size)
-
-        Returns:
-            Predictions of shape (batch_size, output_size)
+        We stick the CLS token at the front, let attention do its thing,
+        then use the CLS token's output as our sequence representation
         """
         batch_size = x.size(0)
 
         # Project input
         x = self.input_projection(x)
 
-        # Prepend CLS token
+        # Prepend CLS token to each sequence in the batch
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
         x = torch.cat([cls_tokens, x], dim=1)
 
-        # Add positional encoding
+        # Position encoding
         x = self.pos_encoder(x)
 
-        # Transformer encoding
+        # Transformer
         encoded = self.transformer_encoder(x)
 
-        # Extract CLS token representation
+        # Grab the CLS token output (first position)
         cls_output = encoded[:, 0, :]
 
-        # Fully connected layers
+        # Dense layers
         out = self.fc1(cls_output)
         out = self.bn1(out)
         out = F.relu(out)
@@ -252,7 +223,6 @@ class PlayerTransformerClassToken(nn.Module):
         return out
 
     def predict(self, x):
-        """Make predictions"""
         self.eval()
         with torch.no_grad():
             predictions = self.forward(x)
@@ -260,21 +230,16 @@ class PlayerTransformerClassToken(nn.Module):
 
 
 def get_model_config():
-    """
-    Get default transformer model configuration
-
-    Returns:
-        Dictionary with model hyperparameters
-    """
+    """Default hyperparameters"""
     return {
-        'input_size': None,  # Will be set based on features
+        'input_size': None,
         'd_model': 128,
         'nhead': 8,
         'num_encoder_layers': 3,
         'dim_feedforward': 512,
         'dropout': 0.1,
-        'output_size': 4,  # PTS, REB, AST, FANTASY_PTS
-        'learning_rate': 0.0001,
+        'output_size': 4,
+        'learning_rate': 0.0001,  # transformers like smaller lr
         'batch_size': 64,
         'num_epochs': 100,
         'sequence_length': 10,
@@ -283,18 +248,16 @@ def get_model_config():
 
 
 if __name__ == "__main__":
-    # Test the model
-    print("Testing Transformer model architecture...")
+    # Quick test
+    print("Testing Transformer models...")
 
-    # Create dummy input
     batch_size = 32
     seq_length = 10
     input_size = 50
 
     dummy_input = torch.randn(batch_size, seq_length, input_size)
 
-    # Test basic Transformer
-    print("\n1. Testing PlayerTransformer...")
+    print("\n1. Basic Transformer:")
     model = PlayerTransformer(
         input_size=input_size,
         d_model=128,
@@ -302,12 +265,11 @@ if __name__ == "__main__":
         num_encoder_layers=3
     )
     output = model(dummy_input)
-    print(f"   Input shape: {dummy_input.shape}")
-    print(f"   Output shape: {output.shape}")
-    print(f"   Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"   Input: {dummy_input.shape}")
+    print(f"   Output: {output.shape}")
+    print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Test Transformer with CLS token
-    print("\n2. Testing PlayerTransformerClassToken...")
+    print("\n2. Transformer with CLS token:")
     model_cls = PlayerTransformerClassToken(
         input_size=input_size,
         d_model=128,
@@ -315,8 +277,8 @@ if __name__ == "__main__":
         num_encoder_layers=3
     )
     output_cls = model_cls(dummy_input)
-    print(f"   Input shape: {dummy_input.shape}")
-    print(f"   Output shape: {output_cls.shape}")
-    print(f"   Model parameters: {sum(p.numel() for p in model_cls.parameters()):,}")
+    print(f"   Input: {dummy_input.shape}")
+    print(f"   Output: {output_cls.shape}")
+    print(f"   Parameters: {sum(p.numel() for p in model_cls.parameters()):,}")
 
-    print("\nModel test successful!")
+    print("\nAll good!")

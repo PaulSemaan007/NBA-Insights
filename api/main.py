@@ -1,6 +1,6 @@
 """
-FastAPI Application for NBA Player Performance Predictions
-Provides REST endpoints for player performance forecasting
+FastAPI Server
+REST endpoints for getting player predictions (optional, mainly for demo)
 """
 
 from fastapi import FastAPI, HTTPException
@@ -14,7 +14,7 @@ import os
 from datetime import datetime
 import pickle
 
-# Add parent directory to path
+# Add paths for model imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models', 'lstm'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models', 'transformer'))
@@ -22,14 +22,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models', 'transfo
 from lstm_model import PlayerLSTMWithAttention
 from transformer_model import PlayerTransformerClassToken
 
-# Initialize FastAPI app
 app = FastAPI(
     title="NBA Insights API",
-    description="AI-powered NBA player performance prediction API",
+    description="Get NBA player performance predictions",
     version="1.0.0"
 )
 
-# CORS middleware
+# Allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for models and scalers
+# Models loaded at startup
 lstm_model = None
 transformer_model = None
 lstm_scaler = None
@@ -46,9 +45,9 @@ transformer_scaler = None
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-# Pydantic models for request/response
+# Request/Response schemas
 class GameFeatures(BaseModel):
-    """Features for a single game"""
+    """Stats from a single game"""
     pts: float = Field(..., description="Points scored")
     reb: float = Field(..., description="Rebounds")
     ast: float = Field(..., description="Assists")
@@ -62,23 +61,23 @@ class GameFeatures(BaseModel):
 
 
 class PredictionRequest(BaseModel):
-    """Request for player prediction"""
+    """What we need to make a prediction"""
     player_id: str = Field(..., description="NBA player ID")
     player_name: str = Field(..., description="Player name")
-    recent_games: List[GameFeatures] = Field(..., description="Recent game performances (last 10 games)")
-    opponent: str = Field(..., description="Opponent team abbreviation")
+    recent_games: List[GameFeatures] = Field(..., description="Last 10 games")
+    opponent: str = Field(..., description="Opponent team (e.g. 'GSW')")
     home_away: str = Field(..., description="'home' or 'away'")
     days_rest: int = Field(1, description="Days since last game")
     opponent_def_rating: Optional[float] = Field(110.0, description="Opponent defensive rating")
 
 
 class PredictionResponse(BaseModel):
-    """Response with predictions"""
+    """What we send back"""
     player_id: str
     player_name: str
-    predictions: dict = Field(..., description="Predicted statistics")
-    confidence: Optional[str] = Field("medium", description="Prediction confidence level")
-    model_used: str = Field(..., description="Model that made the prediction")
+    predictions: dict = Field(..., description="Predicted stats")
+    confidence: Optional[str] = Field("medium", description="How confident we are")
+    model_used: str = Field(..., description="Which model(s) we used")
 
 
 class HealthResponse(BaseModel):
@@ -88,28 +87,24 @@ class HealthResponse(BaseModel):
     device: str
 
 
-# Helper functions
 def load_models():
-    """Load pre-trained models"""
+    """Load the trained models at startup"""
     global lstm_model, transformer_model, lstm_scaler, transformer_scaler
 
     try:
-        # Find latest model files
         models_dir = os.path.join('models', 'saved')
 
-        # Load LSTM model
+        # Look for LSTM model files
         lstm_files = [f for f in os.listdir(models_dir) if f.startswith('lstm_model_') and f.endswith('.pth')]
         if lstm_files:
             latest_lstm = sorted(lstm_files)[-1]
             lstm_path = os.path.join(models_dir, latest_lstm)
 
-            # Load configuration
             lstm_config_file = latest_lstm.replace('lstm_model_', 'lstm_config_').replace('.pth', '.json')
             import json
             with open(os.path.join(models_dir, lstm_config_file), 'r') as f:
                 lstm_config = json.load(f)
 
-            # Initialize model
             lstm_model = PlayerLSTMWithAttention(
                 input_size=lstm_config['input_size'],
                 hidden_size=lstm_config['hidden_size'],
@@ -118,25 +113,22 @@ def load_models():
                 output_size=lstm_config['output_size']
             ).to(device)
 
-            # Load weights
             checkpoint = torch.load(lstm_path, map_location=device)
             lstm_model.load_state_dict(checkpoint['model_state_dict'])
             lstm_model.eval()
 
             print(f"Loaded LSTM model: {latest_lstm}")
 
-        # Load Transformer model
+        # Look for Transformer model files
         transformer_files = [f for f in os.listdir(models_dir) if f.startswith('transformer_model_') and f.endswith('.pth')]
         if transformer_files:
             latest_transformer = sorted(transformer_files)[-1]
             transformer_path = os.path.join(models_dir, latest_transformer)
 
-            # Load configuration
             transformer_config_file = latest_transformer.replace('transformer_model_', 'transformer_config_').replace('.pth', '.json')
             with open(os.path.join(models_dir, transformer_config_file), 'r') as f:
                 transformer_config = json.load(f)
 
-            # Initialize model
             transformer_model = PlayerTransformerClassToken(
                 input_size=transformer_config['input_size'],
                 d_model=transformer_config['d_model'],
@@ -147,7 +139,6 @@ def load_models():
                 output_size=transformer_config['output_size']
             ).to(device)
 
-            # Load weights
             checkpoint = torch.load(transformer_path, map_location=device)
             transformer_model.load_state_dict(checkpoint['model_state_dict'])
             transformer_model.eval()
@@ -174,10 +165,9 @@ def load_models():
 
 def preprocess_features(recent_games: List[GameFeatures], opponent_def_rating: float, days_rest: int, home_away: str):
     """
-    Convert raw game features to model input format
-    This is a simplified version - in production, you'd use the full feature engineering pipeline
+    Turn the game data into a format the model can use
+    This is simplified - in production you'd use the full pipeline
     """
-    # Extract basic features from recent games
     features = []
 
     for game in recent_games:
@@ -195,26 +185,21 @@ def preprocess_features(recent_games: List[GameFeatures], opponent_def_rating: f
         ]
         features.append(game_features)
 
-    # Pad if less than 10 games (sequence length)
+    # Pad to 10 games if needed
     while len(features) < 10:
         features.insert(0, features[0] if features else [0] * 10)
 
-    # Take only last 10 games
     features = features[-10:]
 
-    # Convert to numpy array
     features_array = np.array(features, dtype=np.float32)
-
-    # Add shape: (1, sequence_length, features)
     features_array = features_array.reshape(1, 10, -1)
 
     return features_array
 
 
-# API Endpoints
 @app.on_event("startup")
 async def startup_event():
-    """Load models on startup"""
+    """Load models when the server starts"""
     print("Loading models...")
     load_models()
     print("API ready!")
@@ -222,7 +207,7 @@ async def startup_event():
 
 @app.get("/", response_model=dict)
 async def root():
-    """Root endpoint"""
+    """Home page"""
     return {
         "message": "NBA Insights API",
         "version": "1.0.0",
@@ -236,7 +221,7 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
+    """Check if the server is running and models are loaded"""
     return HealthResponse(
         status="healthy",
         models_loaded={
@@ -252,15 +237,14 @@ async def health_check():
 @app.post("/predict/player", response_model=PredictionResponse)
 async def predict_player_performance(request: PredictionRequest):
     """
-    Predict player performance for next game
+    Get a prediction for a player's next game
 
-    Uses both LSTM and Transformer models and returns ensemble prediction
+    Send the player's last 10 games and we'll predict points, rebounds, assists
     """
     if lstm_model is None and transformer_model is None:
         raise HTTPException(status_code=503, detail="Models not loaded yet")
 
     try:
-        # Preprocess features
         features = preprocess_features(
             request.recent_games,
             request.opponent_def_rating,
@@ -273,14 +257,11 @@ async def predict_player_performance(request: PredictionRequest):
 
         # Get LSTM prediction
         if lstm_model is not None and lstm_scaler is not None:
-            # Normalize features
             features_flat = features.reshape(-1, features.shape[-1])
             features_norm = lstm_scaler.transform(features_flat).reshape(features.shape)
 
-            # Convert to tensor
             features_tensor = torch.FloatTensor(features_norm).to(device)
 
-            # Predict
             with torch.no_grad():
                 lstm_pred = lstm_model(features_tensor).cpu().numpy()[0]
 
@@ -294,14 +275,11 @@ async def predict_player_performance(request: PredictionRequest):
 
         # Get Transformer prediction
         if transformer_model is not None and transformer_scaler is not None:
-            # Normalize features
             features_flat = features.reshape(-1, features.shape[-1])
             features_norm = transformer_scaler.transform(features_flat).reshape(features.shape)
 
-            # Convert to tensor
             features_tensor = torch.FloatTensor(features_norm).to(device)
 
-            # Predict
             with torch.no_grad():
                 transformer_pred = transformer_model(features_tensor).cpu().numpy()[0]
 
@@ -313,7 +291,7 @@ async def predict_player_performance(request: PredictionRequest):
             }
             model_used.append('Transformer')
 
-        # Ensemble: average predictions if both models available
+        # Average them together if we have both
         if 'lstm' in predictions and 'transformer' in predictions:
             ensemble_pred = {
                 'points': (predictions['lstm']['points'] + predictions['transformer']['points']) / 2,
@@ -345,7 +323,7 @@ async def predict_player_performance(request: PredictionRequest):
 
 @app.get("/models/info")
 async def models_info():
-    """Get information about loaded models"""
+    """Get info about the loaded models"""
     info = {
         "lstm_loaded": lstm_model is not None,
         "transformer_loaded": transformer_model is not None,

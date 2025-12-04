@@ -1,6 +1,6 @@
 """
-Data Preprocessing Pipeline
-Cleans raw NBA data and prepares it for feature engineering
+Data Preprocessing
+Takes the raw NBA data and cleans it up for feature engineering
 """
 
 import os
@@ -10,18 +10,17 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-# Paths
 RAW_DATA_DIR = os.path.join('data', 'raw')
 PROCESSED_DATA_DIR = os.path.join('data', 'processed')
 
 def ensure_directory_exists(directory):
-    """Create directory if it doesn't exist"""
+    """Make the directory if it doesn't exist"""
     if not os.path.exists(directory):
         os.makedirs(directory)
         print(f"Created directory: {directory}")
 
 def load_raw_data():
-    """Load raw data from CSV files"""
+    """Load the raw CSV files"""
     print("Loading raw data...")
 
     player_logs = pd.read_csv(os.path.join(RAW_DATA_DIR, 'player_game_logs.csv'))
@@ -35,54 +34,41 @@ def load_raw_data():
     return player_logs, team_stats, games
 
 def clean_player_game_logs(df):
-    """Clean and standardize player game log data"""
+    """Clean up the player game log data"""
     print("\nCleaning player game logs...")
 
-    # Create a copy
     df = df.copy()
 
-    # Standardize column names (NBA API uses 'Player_ID' vs our synthetic 'PLAYER_ID')
+    # Fix column names if needed (NBA API sometimes uses different names)
     column_mapping = {
         'Player_ID': 'PLAYER_ID',
         'Game_ID': 'GAME_ID',
     }
     df = df.rename(columns=column_mapping)
 
-    # Convert date to datetime
     df['GAME_DATE'] = pd.to_datetime(df['GAME_DATE'])
-
-    # Sort by player and date
     df = df.sort_values(['PLAYER_ID', 'GAME_DATE'])
 
-    # Extract home/away from MATCHUP (e.g., "LAL vs. GSW" or "LAL @ GSW")
+    # Figure out if it's a home or away game from the matchup string
+    # "LAL vs. GSW" = home, "LAL @ GSW" = away
     df['HOME_AWAY'] = df['MATCHUP'].apply(lambda x: 'home' if ' vs. ' in x else 'away')
-
-    # Extract opponent team
     df['OPPONENT'] = df['MATCHUP'].apply(lambda x: x.split()[-1])
-
-    # Extract team abbreviation from matchup (e.g., "LAL vs. GSW" -> "LAL")
     df['TEAM_ABBREVIATION'] = df['MATCHUP'].apply(lambda x: x.split()[0])
 
-    # Handle missing values in key statistics
+    # Fill in missing stats with 0
     stat_columns = ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TOV', 'FG_PCT', 'FG3_PCT', 'FT_PCT', 'MIN']
-
     for col in stat_columns:
         if col in df.columns:
-            # Fill missing percentages with 0
-            if 'PCT' in col:
-                df[col] = df[col].fillna(0)
-            # Fill missing counting stats with 0
-            else:
-                df[col] = df[col].fillna(0)
+            df[col] = df[col].fillna(0)
 
-    # Convert MIN from string format (e.g., "35:24") to float (minutes)
+    # Handle minutes in "MM:SS" format
     if df['MIN'].dtype == 'object':
         df['MIN'] = df['MIN'].apply(convert_minutes_to_float)
 
-    # Remove games with 0 minutes played (DNP)
+    # Drop games where the player didn't play
     df = df[df['MIN'] > 0]
 
-    # Add season year (extract from SEASON string like "2023-24")
+    # Get the season year (e.g., "2023-24" -> 2023)
     df['SEASON_YEAR'] = df['SEASON'].apply(lambda x: int(x.split('-')[0]))
 
     print(f"Cleaned data: {len(df)} records")
@@ -92,7 +78,7 @@ def clean_player_game_logs(df):
     return df
 
 def convert_minutes_to_float(min_str):
-    """Convert minutes from MM:SS format to float"""
+    """Convert "35:24" format to 35.4 (decimal minutes)"""
     if pd.isna(min_str) or min_str == '' or min_str == 0:
         return 0.0
 
@@ -111,26 +97,20 @@ def convert_minutes_to_float(min_str):
         return 0.0
 
 def clean_team_stats(df):
-    """Clean team statistics data"""
+    """Clean up team stats"""
     print("\nCleaning team stats...")
 
     df = df.copy()
-
-    # Extract season year
     df['SEASON_YEAR'] = df['SEASON'].apply(lambda x: int(x.split('-')[0]))
 
-    # Calculate offensive and defensive ratings if not present
-    # OFF_RATING = (Points / Possessions) * 100
-    # Possessions ≈ FGA + 0.44*FTA - OREB + TOV
+    # Calculate offensive/defensive ratings if they're not there
     if 'OFF_RATING' not in df.columns:
         possessions = df['FGA'] + 0.44 * df['FTA'] - df['OREB'] + df['TOV']
         df['OFF_RATING'] = (df['PTS'] / possessions) * 100
-        # DEF_RATING would need opponent data, so we'll approximate
-        # Higher PLUS_MINUS indicates better defense relative to offense
         df['DEF_RATING'] = df['OFF_RATING'] - (df['PLUS_MINUS'] / df['GP'])
         df['NET_RATING'] = df['PLUS_MINUS'] / df['GP']
 
-    # Add team abbreviation mapping from NBA team names
+    # Map full team names to abbreviations
     team_abbrev_map = {
         'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN',
         'Charlotte Hornets': 'CHA', 'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE',
@@ -148,15 +128,12 @@ def clean_team_stats(df):
     if 'TEAM_ABBREVIATION' not in df.columns:
         df['TEAM_ABBREVIATION'] = df['TEAM_NAME'].map(team_abbrev_map)
 
-    # Select relevant defensive and offensive stats
+    # Keep the important columns
     important_cols = [
         'TEAM_ID', 'TEAM_NAME', 'TEAM_ABBREVIATION', 'SEASON', 'SEASON_YEAR', 'GP', 'W', 'L',
         'W_PCT', 'OFF_RATING', 'DEF_RATING', 'NET_RATING', 'PTS'
     ]
-
-    # Check which columns exist
     available_cols = [col for col in important_cols if col in df.columns]
-
     df_clean = df[available_cols].copy()
 
     print(f"Cleaned team stats: {len(df_clean)} records")
@@ -164,43 +141,32 @@ def clean_team_stats(df):
     return df_clean
 
 def clean_games_data(df):
-    """Clean games data for schedule and matchup analysis"""
+    """Clean up games schedule data"""
     print("\nCleaning games data...")
 
     df = df.copy()
-
-    # Convert date
     df['GAME_DATE'] = pd.to_datetime(df['GAME_DATE'])
-
-    # Sort by date
     df = df.sort_values('GAME_DATE')
-
-    # Calculate days rest for each team
-    # This will be done in feature engineering
 
     print(f"Cleaned games: {len(df)} records")
 
     return df
 
 def add_basic_features(df):
-    """Add basic derived features to player game logs"""
+    """Add some basic calculated features"""
     print("\nAdding basic features...")
 
     df = df.copy()
 
-    # Calculate efficiency metrics
-    # Player Efficiency Rating (simplified version)
+    # Simple efficiency metric
     df['EFFICIENCY'] = (
         df['PTS'] + df['REB'] + df['AST'] + df['STL'] + df['BLK']
         - (df['FGA'] - df['FGM']) - (df['FTA'] - df['FTM']) - df['TOV']
     )
 
-    # True Shooting Percentage
+    # True shooting percentage
     df['TS_PCT'] = df['PTS'] / (2 * (df['FGA'] + 0.44 * df['FTA']))
     df['TS_PCT'] = df['TS_PCT'].fillna(0)
-
-    # Usage rate approximation (simplified)
-    # Actual usage rate requires team totals, this is a simplified version
 
     # Points per minute
     df['PTS_PER_MIN'] = df['PTS'] / df['MIN'].replace(0, np.nan)
@@ -216,33 +182,30 @@ def add_basic_features(df):
         df['TOV'] * 1.0
     )
 
-    print(f"Added efficiency and fantasy metrics")
+    print("Added efficiency and fantasy metrics")
 
     return df
 
 def save_processed_data(player_logs, team_stats, games):
-    """Save processed data to CSV files"""
+    """Save everything to CSV"""
     print("\nSaving processed data...")
 
     ensure_directory_exists(PROCESSED_DATA_DIR)
 
-    # Save player logs
     player_output = os.path.join(PROCESSED_DATA_DIR, 'player_game_logs_cleaned.csv')
     player_logs.to_csv(player_output, index=False)
     print(f"Saved: {player_output}")
 
-    # Save team stats
     team_output = os.path.join(PROCESSED_DATA_DIR, 'team_stats_cleaned.csv')
     team_stats.to_csv(team_output, index=False)
     print(f"Saved: {team_output}")
 
-    # Save games
     games_output = os.path.join(PROCESSED_DATA_DIR, 'games_cleaned.csv')
     games.to_csv(games_output, index=False)
     print(f"Saved: {games_output}")
 
 def print_data_summary(player_logs):
-    """Print summary statistics of the processed data"""
+    """Show what we ended up with"""
     print(f"\n{'='*60}")
     print("DATA SUMMARY")
     print(f"{'='*60}")
@@ -268,26 +231,20 @@ def print_data_summary(player_logs):
     print(f"{'='*60}\n")
 
 def main():
-    """Main preprocessing pipeline"""
+    """Run the preprocessing pipeline"""
     print(f"\n{'#'*60}")
     print("NBA DATA PREPROCESSING PIPELINE")
     print(f"{'#'*60}\n")
 
-    # Load raw data
     player_logs, team_stats, games = load_raw_data()
 
-    # Clean each dataset
     player_logs_clean = clean_player_game_logs(player_logs)
     team_stats_clean = clean_team_stats(team_stats)
     games_clean = clean_games_data(games)
 
-    # Add basic features
     player_logs_final = add_basic_features(player_logs_clean)
 
-    # Save processed data
     save_processed_data(player_logs_final, team_stats_clean, games_clean)
-
-    # Print summary
     print_data_summary(player_logs_final)
 
     print("PREPROCESSING COMPLETE!")

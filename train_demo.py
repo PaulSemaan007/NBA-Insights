@@ -1,6 +1,6 @@
 """
-Quick Training Script for Demo
-Trains both LSTM and Transformer models with reduced epochs
+Training Script
+Trains both LSTM and Transformer models on our NBA data
 """
 
 import os
@@ -13,7 +13,7 @@ from tqdm import tqdm
 import json
 from datetime import datetime
 
-# Add paths
+# Add paths so we can import our modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models', 'lstm'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models', 'transformer'))
@@ -22,13 +22,13 @@ from training.data_loader import prepare_data_loaders, save_scaler
 from lstm_model import PlayerLSTMWithAttention
 from transformer_model import PlayerTransformerClassToken
 
-# Device configuration
+# Use GPU if available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 
 def train_epoch(model, train_loader, criterion, optimizer, device):
-    """Train for one epoch"""
+    """Run one epoch of training"""
     model.train()
     total_loss = 0
     num_batches = 0
@@ -51,7 +51,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
 
 
 def evaluate(model, data_loader, criterion, device):
-    """Evaluate model"""
+    """Evaluate on validation or test set"""
     model.eval()
     total_loss = 0
     num_batches = 0
@@ -76,6 +76,7 @@ def evaluate(model, data_loader, criterion, device):
     predictions = np.vstack(all_predictions)
     targets_arr = np.vstack(all_targets)
 
+    # Calculate MAE and R2 for each target
     mae_per_target = np.mean(np.abs(predictions - targets_arr), axis=0)
     r2_per_target = []
     for i in range(targets_arr.shape[1]):
@@ -88,7 +89,7 @@ def evaluate(model, data_loader, criterion, device):
 
 
 def train_model(model, train_loader, val_loader, num_epochs, learning_rate, model_name):
-    """Train a model"""
+    """Train a model with early stopping based on validation loss"""
     print(f"\n{'='*60}")
     print(f"TRAINING {model_name.upper()}")
     print(f"{'='*60}\n")
@@ -115,6 +116,7 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, mode
         print(f"  Val MAE: PTS={val_mae[0]:.2f}, REB={val_mae[1]:.2f}, AST={val_mae[2]:.2f}, FP={val_mae[3]:.2f}")
         print(f"  Val R2:  PTS={val_r2[0]:.3f}, REB={val_r2[1]:.3f}, AST={val_r2[2]:.3f}, FP={val_r2[3]:.3f}")
 
+        # Save if this is the best model so far
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save({
@@ -132,28 +134,26 @@ def train_model(model, train_loader, val_loader, num_epochs, learning_rate, mode
 
 
 def main():
-    """Main training pipeline for demo"""
+    """Main training pipeline"""
     print("=" * 60)
-    print("NBA INSIGHTS - DEMO MODEL TRAINING")
+    print("NBA INSIGHTS - MODEL TRAINING")
     print("=" * 60)
 
-    # Configuration
-    NUM_EPOCHS = 20  # Reduced for demo
+    # Settings
+    NUM_EPOCHS = 20
     LEARNING_RATE = 0.001
     BATCH_SIZE = 64
     SEQUENCE_LENGTH = 10
 
-    # Prepare data
+    # Load data
     print("\nPreparing data...")
     train_loader, val_loader, test_loader, scaler, feature_cols, target_cols = prepare_data_loaders(
         sequence_length=SEQUENCE_LENGTH,
         batch_size=BATCH_SIZE
     )
 
-    # Save scaler
     save_scaler(scaler, 'demo_scaler.pkl')
 
-    # Model dimensions
     input_size = len(feature_cols)
     output_size = len(target_cols)
 
@@ -163,12 +163,9 @@ def main():
     print(f"  Sequence length: {SEQUENCE_LENGTH}")
     print(f"  Targets: {target_cols}")
 
-    # Ensure save directory exists
     os.makedirs('models/saved', exist_ok=True)
 
-    # ============================================
-    # Train LSTM Model
-    # ============================================
+    # Train LSTM
     lstm_model = PlayerLSTMWithAttention(
         input_size=input_size,
         hidden_size=128,
@@ -183,9 +180,7 @@ def main():
         lstm_model, train_loader, val_loader, NUM_EPOCHS, LEARNING_RATE, 'lstm'
     )
 
-    # ============================================
-    # Train Transformer Model
-    # ============================================
+    # Train Transformer
     transformer_model = PlayerTransformerClassToken(
         input_size=input_size,
         d_model=128,
@@ -201,28 +196,25 @@ def main():
         transformer_model, train_loader, val_loader, NUM_EPOCHS, LEARNING_RATE, 'transformer'
     )
 
-    # ============================================
-    # Evaluate on Test Set
-    # ============================================
+    # Final evaluation on test set
     print("\n" + "=" * 60)
     print("FINAL TEST SET EVALUATION")
     print("=" * 60)
 
     criterion = nn.MSELoss()
 
-    # Load best LSTM model
+    # Load best LSTM
     lstm_model.load_state_dict(torch.load('models/saved/lstm_best.pth', weights_only=False)['model_state_dict'])
     lstm_test_loss, lstm_preds, lstm_targets, lstm_mae, lstm_r2 = evaluate(
         lstm_model, test_loader, criterion, device
     )
 
-    # Load best Transformer model
+    # Load best Transformer
     transformer_model.load_state_dict(torch.load('models/saved/transformer_best.pth', weights_only=False)['model_state_dict'])
     transformer_test_loss, transformer_preds, transformer_targets, transformer_mae, transformer_r2 = evaluate(
         transformer_model, test_loader, criterion, device
     )
 
-    # Print results
     print("\n" + "-" * 40)
     print("LSTM Test Results:")
     print("-" * 40)
@@ -237,7 +229,7 @@ def main():
     print(f"  MAE: PTS={transformer_mae[0]:.2f}, REB={transformer_mae[1]:.2f}, AST={transformer_mae[2]:.2f}, FP={transformer_mae[3]:.2f}")
     print(f"  R2:  PTS={transformer_r2[0]:.3f}, REB={transformer_r2[1]:.3f}, AST={transformer_r2[2]:.3f}, FP={transformer_r2[3]:.3f}")
 
-    # Save training results
+    # Save results
     results = {
         'lstm': {
             'test_loss': float(lstm_test_loss),

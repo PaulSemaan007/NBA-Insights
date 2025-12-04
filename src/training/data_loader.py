@@ -1,6 +1,6 @@
 """
-Data Loader for NBA Player Performance Models
-Prepares sequential data for LSTM and Transformer models
+Data Loader
+Turns our player data into sequences that PyTorch can use
 """
 
 import os
@@ -16,17 +16,15 @@ PROCESSED_DATA_DIR = os.path.join('data', 'processed')
 
 class NBASequenceDataset(Dataset):
     """
-    PyTorch Dataset for sequential NBA player data
+    PyTorch Dataset that gives us sequences of games
 
-    Creates sequences of last N games for each prediction
+    Each sample is (last N games, target stats for next game)
     """
 
     def __init__(self, sequences, features, targets):
         """
-        Args:
-            sequences: numpy array of shape (n_samples, seq_len, n_features)
-            features: numpy array of features for current game (optional, can be None)
-            targets: numpy array of target values
+        sequences: (n_samples, seq_len, n_features) array
+        targets: what we're trying to predict
         """
         self.sequences = torch.FloatTensor(sequences)
         self.features = torch.FloatTensor(features) if features is not None else None
@@ -40,7 +38,7 @@ class NBASequenceDataset(Dataset):
 
 
 def load_feature_data():
-    """Load engineered feature data"""
+    """Load the engineered features"""
     print("Loading feature data...")
 
     df = pd.read_csv(
@@ -48,7 +46,6 @@ def load_feature_data():
         parse_dates=['GAME_DATE']
     )
 
-    # Load feature and target column lists
     with open(os.path.join(PROCESSED_DATA_DIR, 'feature_columns.txt'), 'r') as f:
         feature_columns = [line.strip() for line in f.readlines()]
 
@@ -64,20 +61,13 @@ def load_feature_data():
 
 def create_sequences(df, feature_columns, target_columns, sequence_length=10):
     """
-    Create sequences of games for each player
+    Turn the dataframe into sequences
 
-    Args:
-        df: Dataframe with features and targets
-        feature_columns: List of feature column names
-        target_columns: List of target column names
-        sequence_length: Number of previous games to include
-
-    Returns:
-        sequences, targets, player_ids, game_dates
+    For each player, we take sliding windows of their game history
+    to create (input sequence, target) pairs
     """
     print(f"\nCreating sequences (sequence_length={sequence_length})...")
 
-    # Sort by player and date
     df = df.sort_values(['PLAYER_ID', 'GAME_DATE'])
 
     sequences = []
@@ -85,23 +75,19 @@ def create_sequences(df, feature_columns, target_columns, sequence_length=10):
     player_ids = []
     game_dates = []
 
-    # Group by player
     for player_id, player_df in df.groupby('PLAYER_ID'):
         player_df = player_df.reset_index(drop=True)
 
-        # Need at least sequence_length games
+        # Skip players with not enough games
         if len(player_df) < sequence_length:
             continue
 
-        # Create sequences
+        # Slide through their games
         for i in range(sequence_length, len(player_df)):
-            # Get sequence of previous games
             seq = player_df.iloc[i-sequence_length:i][feature_columns].values.astype(np.float64)
-
-            # Get target for next game
             target = player_df.iloc[i][target_columns].values.astype(np.float64)
 
-            # Check for NaN values
+            # Skip if there are NaN values
             if not np.isnan(seq).any() and not np.isnan(target).any():
                 sequences.append(seq)
                 targets.append(target)
@@ -120,27 +106,20 @@ def create_sequences(df, feature_columns, target_columns, sequence_length=10):
 
 def normalize_data(sequences_train, sequences_val, sequences_test):
     """
-    Normalize sequences using StandardScaler
+    Normalize the data using StandardScaler
 
-    Args:
-        sequences_train: Training sequences
-        sequences_val: Validation sequences
-        sequences_test: Test sequences
-
-    Returns:
-        Normalized sequences and fitted scaler
+    Fit on training data only to avoid data leakage
     """
     print("\nNormalizing data...")
 
-    # Reshape for scaling (combine batch and sequence dimensions)
     n_train, seq_len, n_features = sequences_train.shape
 
-    # Fit scaler on training data
+    # Fit on training data
     scaler = StandardScaler()
     sequences_train_flat = sequences_train.reshape(-1, n_features)
     scaler.fit(sequences_train_flat)
 
-    # Transform all datasets
+    # Transform everything
     sequences_train_norm = scaler.transform(sequences_train_flat).reshape(n_train, seq_len, n_features)
 
     if sequences_val is not None:
@@ -164,45 +143,34 @@ def normalize_data(sequences_train, sequences_val, sequences_test):
 
 def prepare_data_loaders(sequence_length=10, batch_size=64, val_split=0.15, test_split=0.15):
     """
-    Prepare train, validation, and test data loaders
+    Set up the train/val/test data loaders
 
-    Args:
-        sequence_length: Number of previous games in sequence
-        batch_size: Batch size for data loaders
-        val_split: Validation split ratio
-        test_split: Test split ratio
-
-    Returns:
-        train_loader, val_loader, test_loader, scaler, feature_columns, target_columns
+    Does 70/15/15 split by default
     """
     print(f"\n{'='*60}")
     print("PREPARING DATA LOADERS")
     print(f"{'='*60}")
 
-    # Load data
     df, feature_columns, target_columns = load_feature_data()
 
-    # Create sequences
     sequences, targets, player_ids, game_dates = create_sequences(
         df, feature_columns, target_columns, sequence_length
     )
 
-    # Split data (stratified by player to avoid data leakage)
-    # First split: train + val vs test
+    # Split into train+val and test
     train_val_idx, test_idx = train_test_split(
         range(len(sequences)),
         test_size=test_split,
         random_state=42
     )
 
-    # Second split: train vs val
+    # Split train and val
     train_idx, val_idx = train_test_split(
         train_val_idx,
         test_size=val_split / (1 - test_split),
         random_state=42
     )
 
-    # Create splits
     sequences_train = sequences[train_idx]
     targets_train = targets[train_idx]
 
@@ -217,17 +185,14 @@ def prepare_data_loaders(sequence_length=10, batch_size=64, val_split=0.15, test
     print(f"  Validation: {len(sequences_val)} samples")
     print(f"  Test: {len(sequences_test)} samples")
 
-    # Normalize data
     sequences_train_norm, sequences_val_norm, sequences_test_norm, scaler = normalize_data(
         sequences_train, sequences_val, sequences_test
     )
 
-    # Create datasets
     train_dataset = NBASequenceDataset(sequences_train_norm, None, targets_train)
     val_dataset = NBASequenceDataset(sequences_val_norm, None, targets_val)
     test_dataset = NBASequenceDataset(sequences_test_norm, None, targets_test)
 
-    # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -239,7 +204,7 @@ def prepare_data_loaders(sequence_length=10, batch_size=64, val_split=0.15, test
 
 
 def save_scaler(scaler, filename='scaler.pkl'):
-    """Save fitted scaler to disk"""
+    """Save the scaler so we can use it for inference"""
     scaler_path = os.path.join('models', 'saved', filename)
     os.makedirs(os.path.dirname(scaler_path), exist_ok=True)
 
@@ -250,7 +215,7 @@ def save_scaler(scaler, filename='scaler.pkl'):
 
 
 def load_scaler(filename='scaler.pkl'):
-    """Load fitted scaler from disk"""
+    """Load a saved scaler"""
     scaler_path = os.path.join('models', 'saved', filename)
 
     with open(scaler_path, 'rb') as f:
@@ -261,7 +226,7 @@ def load_scaler(filename='scaler.pkl'):
 
 
 if __name__ == "__main__":
-    # Test data loader
+    # Quick test
     print("Testing data loader...")
 
     train_loader, val_loader, test_loader, scaler, feature_cols, target_cols = prepare_data_loaders(
@@ -269,7 +234,6 @@ if __name__ == "__main__":
         batch_size=32
     )
 
-    # Test batch
     sequences_batch, targets_batch = next(iter(train_loader))
     print(f"\nBatch shapes:")
     print(f"  Sequences: {sequences_batch.shape}")

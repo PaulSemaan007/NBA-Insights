@@ -1,6 +1,6 @@
 """
-NBA Insights - Streamlit Demo Application
-AI-Powered NBA Player Performance Prediction
+NBA Insights - Streamlit Demo
+Pick a player and see what our models predict for their next game
 """
 
 import streamlit as st
@@ -12,7 +12,7 @@ import pickle
 import os
 import sys
 
-# Add project paths
+# Add paths so imports work
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models', 'lstm'))
@@ -21,7 +21,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models', 'transfo
 from lstm_model import PlayerLSTMWithAttention
 from transformer_model import PlayerTransformerClassToken
 
-# Page configuration
+# Page setup
 st.set_page_config(
     page_title="NBA Insights - AI Player Predictions",
     page_icon="🏀",
@@ -29,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Some custom styling
 st.markdown("""
 <style>
     .main-header {
@@ -58,16 +58,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Cache model loading
+# Cache the models so we don't reload them every time
 @st.cache_resource
 def load_models():
-    """Load trained models"""
+    """Load our trained models"""
     device = torch.device('cpu')
 
-    # Model paths
     base_path = os.path.dirname(os.path.dirname(__file__))
 
-    # Load feature columns to get input size
+    # Figure out how many features we have
     feature_cols_path = os.path.join(base_path, 'data', 'processed', 'feature_columns.txt')
     with open(feature_cols_path, 'r') as f:
         feature_cols = [line.strip() for line in f.readlines()]
@@ -79,7 +78,7 @@ def load_models():
     input_size = len(feature_cols)
     output_size = len(target_cols)
 
-    # Create and load LSTM model
+    # Load LSTM
     lstm_model = PlayerLSTMWithAttention(
         input_size=input_size,
         hidden_size=128,
@@ -91,7 +90,7 @@ def load_models():
     lstm_model.load_state_dict(torch.load(lstm_path, weights_only=False, map_location=device)['model_state_dict'])
     lstm_model.eval()
 
-    # Create and load Transformer model
+    # Load Transformer
     transformer_model = PlayerTransformerClassToken(
         input_size=input_size,
         d_model=128,
@@ -113,7 +112,7 @@ def load_models():
 
 @st.cache_data
 def load_player_data():
-    """Load player data for selection"""
+    """Load player data for the dropdown"""
     base_path = os.path.dirname(os.path.dirname(__file__))
     df = pd.read_csv(
         os.path.join(base_path, 'data', 'processed', 'player_features_final.csv'),
@@ -122,17 +121,17 @@ def load_player_data():
     return df
 
 def get_player_sequence(df, player_name, feature_cols, sequence_length=10):
-    """Get the most recent sequence for a player"""
+    """Get a player's recent games for prediction"""
     player_df = df[df['PLAYER_NAME'] == player_name].sort_values('GAME_DATE')
 
     if len(player_df) < sequence_length:
         return None, None
 
-    # Get last sequence_length games
+    # Grab their last 10 games
     recent_games = player_df.tail(sequence_length)
     sequence = recent_games[feature_cols].values.astype(np.float64)
 
-    # Get player info for display
+    # Some info for display
     latest_game = player_df.iloc[-1]
     player_info = {
         'name': player_name,
@@ -146,13 +145,12 @@ def get_player_sequence(df, player_name, feature_cols, sequence_length=10):
     return sequence, player_info
 
 def make_prediction(model, sequence, scaler):
-    """Make prediction using a model"""
-    # Normalize the sequence
+    """Run the model and get a prediction"""
+    # Normalize
     seq_flat = sequence.reshape(-1, sequence.shape[-1])
     seq_normalized = scaler.transform(seq_flat)
     seq_normalized = seq_normalized.reshape(1, sequence.shape[0], sequence.shape[1])
 
-    # Convert to tensor and predict
     seq_tensor = torch.FloatTensor(seq_normalized)
 
     with torch.no_grad():
@@ -166,7 +164,7 @@ def main():
     st.markdown('<p style="text-align: center; font-size: 1.2rem;">AI-Powered Player Performance Predictions</p>', unsafe_allow_html=True)
     st.markdown('---')
 
-    # Load models and data
+    # Try to load everything
     try:
         lstm_model, transformer_model, scaler, feature_cols, target_cols = load_models()
         df = load_player_data()
@@ -178,10 +176,10 @@ def main():
     if not models_loaded:
         st.stop()
 
-    # Sidebar
+    # Sidebar for player selection
     st.sidebar.header("Player Selection")
 
-    # Get unique players sorted by number of games
+    # Sort players by how many games they have (stars first)
     player_games = df.groupby('PLAYER_NAME').size().sort_values(ascending=False)
     players = player_games.index.tolist()
 
@@ -199,7 +197,7 @@ def main():
         index=0
     )
 
-    # Info section
+    # About section
     st.sidebar.markdown("---")
     st.sidebar.header("About")
     st.sidebar.info(
@@ -212,27 +210,26 @@ def main():
         """
     )
 
-    # Main content
+    # Main content area
     col1, col2 = st.columns([2, 1])
 
     with col1:
         st.header(f"Predictions for {selected_player}")
 
-        # Get player data
         sequence, player_info = get_player_sequence(df, selected_player, feature_cols)
 
         if sequence is None:
             st.warning("Not enough game history for this player (need at least 10 games)")
             st.stop()
 
-        # Make predictions
+        # Get predictions from both models
         lstm_pred = make_prediction(lstm_model, sequence, scaler)
         transformer_pred = make_prediction(transformer_model, sequence, scaler)
 
-        # Ensemble prediction (average)
+        # Average them for ensemble
         ensemble_pred = (lstm_pred + transformer_pred) / 2
 
-        # Display predictions based on model choice
+        # Pick which one to display
         if model_choice == "Ensemble (LSTM + Transformer)":
             pred = ensemble_pred
             model_name = "Ensemble"
@@ -243,7 +240,7 @@ def main():
             pred = transformer_pred
             model_name = "Transformer"
 
-        # Prediction cards
+        # Show the predictions
         st.subheader(f"Next Game Predictions ({model_name})")
 
         metric_cols = st.columns(4)
@@ -276,7 +273,7 @@ def main():
                 delta=None
             )
 
-        # Model comparison
+        # Compare models
         st.markdown("---")
         st.subheader("Model Comparison")
 
@@ -298,7 +295,7 @@ def main():
             use_container_width=True
         )
 
-        # Bar chart comparison
+        # Bar chart
         chart_data = pd.DataFrame({
             'LSTM': lstm_pred[:3],
             'Transformer': transformer_pred[:3],
@@ -310,7 +307,6 @@ def main():
     with col2:
         st.header("Player Info")
 
-        # Player stats card
         st.markdown(f"""
         <div class="prediction-card">
             <h3>{player_info['name']}</h3>

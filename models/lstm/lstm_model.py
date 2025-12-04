@@ -1,6 +1,6 @@
 """
-LSTM Model for NBA Player Performance Prediction
-Processes sequential game data to predict future performance
+LSTM Model for NBA Player Prediction
+We use this to look at a player's recent games and predict their next performance
 """
 
 import torch
@@ -9,13 +9,10 @@ import torch.nn.functional as F
 
 class PlayerLSTM(nn.Module):
     """
-    LSTM model for predicting NBA player performance
+    Basic LSTM for predicting player stats
 
-    Architecture:
-    - Input: Sequential game features (last N games)
-    - LSTM layers: Process temporal patterns
-    - Fully connected layers: Generate predictions
-    - Output: Predicted statistics (PTS, REB, AST, FANTASY_PTS)
+    Takes in the last N games worth of features and outputs predicted
+    points, rebounds, assists, and fantasy points
     """
 
     def __init__(
@@ -27,12 +24,11 @@ class PlayerLSTM(nn.Module):
         output_size=4
     ):
         """
-        Args:
-            input_size: Number of features per timestep
-            hidden_size: Number of LSTM hidden units
-            num_layers: Number of LSTM layers
-            dropout: Dropout rate for regularization
-            output_size: Number of output predictions (default: 4 for PTS, REB, AST, FANTASY_PTS)
+        input_size: how many features we have per game
+        hidden_size: LSTM hidden dimension (128 worked well for us)
+        num_layers: stacking 2 LSTM layers
+        dropout: 0.3 to prevent overfitting
+        output_size: 4 outputs (PTS, REB, AST, FANTASY_PTS)
         """
         super(PlayerLSTM, self).__init__()
 
@@ -41,7 +37,7 @@ class PlayerLSTM(nn.Module):
         self.num_layers = num_layers
         self.output_size = output_size
 
-        # LSTM layers
+        # The actual LSTM layers
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -50,37 +46,29 @@ class PlayerLSTM(nn.Module):
             dropout=dropout if num_layers > 1 else 0
         )
 
-        # Fully connected layers
+        # Dense layers after the LSTM
         self.fc1 = nn.Linear(hidden_size, hidden_size // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(hidden_size // 2, hidden_size // 4)
         self.dropout2 = nn.Dropout(dropout)
         self.fc3 = nn.Linear(hidden_size // 4, output_size)
 
-        # Batch normalization
+        # Batch norm helps training stability
         self.bn1 = nn.BatchNorm1d(hidden_size // 2)
         self.bn2 = nn.BatchNorm1d(hidden_size // 4)
 
     def forward(self, x):
         """
-        Forward pass
-
-        Args:
-            x: Input tensor of shape (batch_size, sequence_length, input_size)
-
-        Returns:
-            Predictions of shape (batch_size, output_size)
+        x shape: (batch_size, sequence_length, input_size)
+        returns: (batch_size, output_size)
         """
-        # LSTM forward pass
-        # lstm_out shape: (batch_size, seq_len, hidden_size)
-        # h_n shape: (num_layers, batch_size, hidden_size)
+        # Run through LSTM
         lstm_out, (h_n, c_n) = self.lstm(x)
 
-        # Use the last hidden state from the last layer
-        # h_n[-1] shape: (batch_size, hidden_size)
+        # Grab the final hidden state
         last_hidden = h_n[-1]
 
-        # Fully connected layers with ReLU and dropout
+        # Pass through dense layers
         out = self.fc1(last_hidden)
         out = self.bn1(out)
         out = F.relu(out)
@@ -91,21 +79,13 @@ class PlayerLSTM(nn.Module):
         out = F.relu(out)
         out = self.dropout2(out)
 
-        # Final output layer (no activation for regression)
+        # No activation on output since this is regression
         out = self.fc3(out)
 
         return out
 
     def predict(self, x):
-        """
-        Make predictions (wrapper for inference)
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Predictions as numpy array
-        """
+        """Convenience method for inference"""
         self.eval()
         with torch.no_grad():
             predictions = self.forward(x)
@@ -114,8 +94,10 @@ class PlayerLSTM(nn.Module):
 
 class PlayerLSTMWithAttention(nn.Module):
     """
-    Enhanced LSTM with attention mechanism
-    Allows model to focus on most relevant games in sequence
+    LSTM with attention - this is the one we actually use
+
+    The attention mechanism lets the model figure out which games
+    in the sequence are most important for the prediction
     """
 
     def __init__(
@@ -133,7 +115,6 @@ class PlayerLSTMWithAttention(nn.Module):
         self.num_layers = num_layers
         self.output_size = output_size
 
-        # LSTM layers
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -142,10 +123,10 @@ class PlayerLSTMWithAttention(nn.Module):
             dropout=dropout if num_layers > 1 else 0
         )
 
-        # Attention mechanism
+        # Simple attention - just a linear layer that scores each timestep
         self.attention = nn.Linear(hidden_size, 1)
 
-        # Fully connected layers
+        # Same dense layers as before
         self.fc1 = nn.Linear(hidden_size, hidden_size // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(hidden_size // 2, hidden_size // 4)
@@ -159,29 +140,22 @@ class PlayerLSTMWithAttention(nn.Module):
         """
         Forward pass with attention
 
-        Args:
-            x: Input tensor of shape (batch_size, sequence_length, input_size)
-
-        Returns:
-            Predictions of shape (batch_size, output_size)
+        Instead of just using the last hidden state, we compute
+        a weighted average of all hidden states based on attention scores
         """
-        # LSTM forward pass
+        # LSTM outputs hidden states for every timestep
         lstm_out, (h_n, c_n) = self.lstm(x)
-        # lstm_out shape: (batch_size, seq_len, hidden_size)
 
-        # Calculate attention weights
-        # attention_scores shape: (batch_size, seq_len, 1)
+        # Score each timestep
         attention_scores = self.attention(lstm_out)
 
-        # Softmax across sequence dimension
-        # attention_weights shape: (batch_size, seq_len, 1)
+        # Softmax to get weights that sum to 1
         attention_weights = F.softmax(attention_scores, dim=1)
 
-        # Apply attention weights to LSTM outputs
-        # context_vector shape: (batch_size, hidden_size)
+        # Weighted sum of LSTM outputs
         context_vector = torch.sum(attention_weights * lstm_out, dim=1)
 
-        # Fully connected layers
+        # Dense layers
         out = self.fc1(context_vector)
         out = self.bn1(out)
         out = F.relu(out)
@@ -197,7 +171,7 @@ class PlayerLSTMWithAttention(nn.Module):
         return out
 
     def predict(self, x):
-        """Make predictions"""
+        """Inference mode"""
         self.eval()
         with torch.no_grad():
             predictions = self.forward(x)
@@ -205,51 +179,43 @@ class PlayerLSTMWithAttention(nn.Module):
 
 
 def get_model_config():
-    """
-    Get default model configuration
-
-    Returns:
-        Dictionary with model hyperparameters
-    """
+    """Default hyperparameters that worked for us"""
     return {
-        'input_size': None,  # Will be set based on features
+        'input_size': None,  # depends on feature count
         'hidden_size': 128,
         'num_layers': 2,
         'dropout': 0.3,
-        'output_size': 4,  # PTS, REB, AST, FANTASY_PTS
+        'output_size': 4,
         'learning_rate': 0.001,
         'batch_size': 64,
         'num_epochs': 100,
-        'sequence_length': 10,  # Last 10 games
+        'sequence_length': 10,  # look at last 10 games
         'early_stopping_patience': 10
     }
 
 
 if __name__ == "__main__":
-    # Test the model
-    print("Testing LSTM model architecture...")
+    # Quick test to make sure everything works
+    print("Testing LSTM models...")
 
-    # Create dummy input
     batch_size = 32
     seq_length = 10
-    input_size = 50  # Number of features
+    input_size = 50
 
     dummy_input = torch.randn(batch_size, seq_length, input_size)
 
-    # Test basic LSTM
-    print("\n1. Testing PlayerLSTM...")
+    print("\n1. Basic LSTM:")
     model = PlayerLSTM(input_size=input_size, hidden_size=128, num_layers=2)
     output = model(dummy_input)
-    print(f"   Input shape: {dummy_input.shape}")
-    print(f"   Output shape: {output.shape}")
-    print(f"   Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"   Input: {dummy_input.shape}")
+    print(f"   Output: {output.shape}")
+    print(f"   Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    # Test LSTM with attention
-    print("\n2. Testing PlayerLSTMWithAttention...")
+    print("\n2. LSTM with Attention:")
     model_attn = PlayerLSTMWithAttention(input_size=input_size, hidden_size=128, num_layers=2)
     output_attn = model_attn(dummy_input)
-    print(f"   Input shape: {dummy_input.shape}")
-    print(f"   Output shape: {output_attn.shape}")
-    print(f"   Model parameters: {sum(p.numel() for p in model_attn.parameters()):,}")
+    print(f"   Input: {dummy_input.shape}")
+    print(f"   Output: {output_attn.shape}")
+    print(f"   Parameters: {sum(p.numel() for p in model_attn.parameters()):,}")
 
-    print("\nModel test successful!")
+    print("\nAll good!")
