@@ -1,0 +1,151 @@
+# NBA Insights Model Configuration
+# Edit these values to customize model training
+
+# Data Configuration
+data:
+  sequence_length: 10  # Number of previous games to use
+  val_split: 0.15      # Validation split ratio
+  test_split: 0.15     # Test split ratio
+  random_seed: 42      # For reproducibility
+
+# LSTM Model Configuration
+lstm:
+  model:
+    input_size: null     # Auto-determined from features
+    hidden_size: 128     # LSTM hidden units
+    num_layers: 2        # Number of LSTM layers
+    dropout: 0.3         # Dropout rate
+    output_size: 4       # Number of targets (PTS, REB, AST, FANTASY_PTS)
+
+  training:
+    batch_size: 64
+    num_epochs: 100
+    learning_rate: 0.001
+    early_stopping_patience: 10
+    gradient_clip: 1.0
+
+  optimizer:
+    type: "Adam"
+    weight_decay: 0.0
+
+  scheduler:
+    type: "ReduceLROnPlateau"
+    mode: "min"
+    factor: 0.5
+    patience: 5
+
+# Transformer Model Configuration
+transformer:
+  model:
+    input_size: null     # Auto-determined from features
+    d_model: 128         # Model dimension (must be divisible by nhead)
+    nhead: 8             # Number of attention heads
+    num_encoder_layers: 3  # Number of transformer layers
+    dim_feedforward: 512   # Feedforward network dimension
+    dropout: 0.1         # Dropout rate
+    output_size: 4       # Number of targets
+
+  training:
+    batch_size: 64
+    num_epochs: 100
+    learning_rate: 0.0001
+    early_stopping_patience: 15
+    gradient_clip: 1.0
+    warmup_epochs: 5
+
+  optimizer:
+    type: "AdamW"
+    weight_decay: 0.01
+
+  scheduler:
+    type: "LambdaLR"
+    warmup_epochs: 5
+    decay_every: 10
+    decay_factor: 0.5
+
+# Feature Engineering Configuration
+features:
+  rolling_windows: [5, 10, 20]  # Rolling average windows
+
+  stats_to_roll:
+    - "PTS"
+    - "REB"
+    - "AST"
+    - "STL"
+    - "BLK"
+    - "TOV"
+    - "FG_PCT"
+    - "FG3_PCT"
+    - "FT_PCT"
+    - "MIN"
+    - "EFFICIENCY"
+    - "FANTASY_PTS"
+
+  target_stats:
+    - "PTS"
+    - "REB"
+    - "AST"
+    - "FANTASY_PTS"
+
+  rest_thresholds:
+    back_to_back: 1     # Days rest for back-to-back
+    well_rested: 3      # Days rest for well-rested
+
+  form_thresholds:
+    hot_streak: 1.1     # Recent avg / season avg for hot
+    cold_streak: 0.9    # Recent avg / season avg for cold
+
+# Data Collection Configuration
+data_collection:
+  seasons:
+    - "2015-16"
+    - "2016-17"
+    - "2017-18"
+    - "2018-19"
+    - "2019-20"
+    - "2020-21"
+    - "2021-22"
+    - "2022-23"
+    - "2023-24"
+    - "2024-25"
+
+  api_delay: 0.6       # Seconds between API calls
+  max_players: null    # null for all players, or number for testing
+  season_type: "Regular Season"
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true         # Auto-reload on code changes (dev only)
+  workers: 1           # Number of worker processes
+
+  ensemble:
+    enabled: true      # Use ensemble of LSTM + Transformer
+    weights:
+      lstm: 0.5
+      transformer: 0.5
+
+# Logging Configuration
+logging:
+  tensorboard: true
+  log_dir: "models/saved/logs"
+  checkpoint_dir: "models/saved"
+  save_every: 1        # Save checkpoint every N epochs
+  log_every: 1         # Log metrics every N batches
+
+# Hardware Configuration
+hardware:
+  device: "auto"       # "auto", "cuda", or "cpu"
+  num_workers: 4       # DataLoader workers
+  pin_memory: true     # Pin memory for faster GPU transfer
+
+# Experiment Tracking
+experiment:
+  name: "nba_insights"
+  version: "1.0.0"
+  description: "NBA player performance prediction"
+  tags:
+    - "nba"
+    - "deep-learning"
+    - "sports-analytics"

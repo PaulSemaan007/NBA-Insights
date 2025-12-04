@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Insights - CECS 458 Final Presentation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #fff; }
+        .slide { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px; }
+        .slide h1 { font-size: 3.5rem; margin-bottom: 30px; color: #00d4ff; text-align: center; }
+        .slide h2 { font-size: 2.5rem; margin-bottom: 25px; color: #ff6b6b; }
+        .slide h3 { font-size: 1.8rem; margin: 20px 0; color: #feca57; }
+        .slide p, .slide li { font-size: 1.4rem; line-height: 1.8; margin: 10px 0; }
+        .slide ul { list-style: none; }
+        .slide li::before { content: "▸ "; color: #00d4ff; }
+        .content { max-width: 1200px; width: 100%; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+        .card { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 30px; margin: 15px 0; }
+        .highlight { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; }
+        .metric { text-align: center; padding: 20px; }
+        .metric .value { font-size: 3rem; color: #00d4ff; font-weight: bold; }
+        .metric .label { font-size: 1.2rem; color: #ccc; }
+        .team-name { font-size: 1.8rem; color: #feca57; margin-bottom: 10px; }
+        .nav { position: fixed; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 100; }
+        .nav button { padding: 10px 20px; font-size: 1.2rem; background: #00d4ff; border: none; border-radius: 5px; cursor: pointer; }
+        .slide-number { position: fixed; bottom: 20px; left: 20px; font-size: 1.2rem; color: #666; }
+        .title-slide { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+        .title-slide h1 { font-size: 4rem; background: linear-gradient(90deg, #00d4ff, #ff6b6b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .code-block { background: #0d0d1a; padding: 20px; border-radius: 10px; font-family: 'Courier New', monospace; font-size: 1rem; overflow-x: auto; }
+        .architecture-diagram { background: #16213e; padding: 30px; border-radius: 15px; text-align: center; }
+        .flow-box { display: inline-block; background: #00d4ff33; padding: 15px 25px; margin: 5px; border-radius: 8px; }
+        .arrow { color: #00d4ff; margin: 0 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #00d4ff22; color: #00d4ff; }
+        @media (max-width: 768px) {
+            .two-col { grid-template-columns: 1fr; }
+            .slide h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Slide 1: Title -->
+    <div class="slide title-slide" id="slide1">
+        <div class="content" style="text-align: center;">
+            <h1>🏀 NBA Insights</h1>
+            <h2 style="color: #fff; font-size: 2rem;">AI-Powered Player Performance Prediction</h2>
+            <p style="margin-top: 40px; font-size: 1.5rem;">CECS 458 - Deep Learning Final Project</p>
+            <div class="team-name" style="margin-top: 30px;">Team 6</div>
+            <p>Paul Semaan • Kyler Sison</p>
+            <p style="margin-top: 20px; color: #888;">California State University, Long Beach</p>
+        </div>
+    </div>
+
+    <!-- Slide 2: Problem Statement -->
+    <div class="slide" id="slide2">
+        <div class="content">
+            <h1>The Problem</h1>
+            <div class="two-col">
+                <div>
+                    <h3>62 Million Fantasy Players Need Help</h3>
+                    <ul>
+                        <li>2-3 hours daily analyzing 15+ data points per player</li>
+                        <li>Last-minute injuries invalidate morning research</li>
+                        <li>Context (rest, travel, matchups) often ignored</li>
+                        <li>Free tools lack predictive power</li>
+                        <li>Pro tools cost $30-100/month</li>
+                    </ul>
+                </div>
+                <div class="highlight">
+                    <h3 style="color: #fff;">The Gap We Fill</h3>
+                    <p>Users drown in data but starve for <strong>actionable intelligence</strong></p>
+                    <p style="margin-top: 20px;">NBA Insights provides professional-grade AI predictions at an accessible price point.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 3: Solution Overview -->
+    <div class="slide" id="slide3">
+        <div class="content">
+            <h1>Our Solution</h1>
+            <div class="architecture-diagram">
+                <div class="flow-box">Raw NBA Data</div>
+                <span class="arrow">→</span>
+                <div class="flow-box">Feature Engineering</div>
+                <span class="arrow">→</span>
+                <div class="flow-box">Deep Learning Models</div>
+                <span class="arrow">→</span>
+                <div class="flow-box">Predictions API</div>
+            </div>
+            <div class="two-col" style="margin-top: 40px;">
+                <div class="card">
+                    <h3>🧠 LSTM with Attention</h3>
+                    <p>Captures sequential patterns in game history using bidirectional LSTM with attention mechanism</p>
+                </div>
+                <div class="card">
+                    <h3>⚡ Transformer (BERT-style)</h3>
+                    <p>Multi-head self-attention identifies complex relationships between contextual factors</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 4: Deep Learning Techniques -->
+    <div class="slide" id="slide4">
+        <div class="content">
+            <h1>Deep Learning Techniques</h1>
+            <div class="two-col">
+                <div class="card">
+                    <h3>LSTM Architecture</h3>
+                    <ul>
+                        <li>2 Bidirectional LSTM layers</li>
+                        <li>128 hidden units per layer</li>
+                        <li>Attention mechanism for game weighting</li>
+                        <li>Dropout (0.3) for regularization</li>
+                        <li>~235,000 parameters</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>Transformer Architecture</h3>
+                    <ul>
+                        <li>2 Encoder layers</li>
+                        <li>4 Attention heads</li>
+                        <li>128-dim embeddings</li>
+                        <li>Learnable CLS token</li>
+                        <li>~414,000 parameters</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h3>50+ Engineered Features</h3>
+                <p>Rolling averages (5/10/20 games) • Rest days • Hot/cold streaks • Opponent defense rating • Home/away splits • Matchup history</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 5: Model Performance -->
+    <div class="slide" id="slide5">
+        <div class="content">
+            <h1>Model Performance</h1>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>LSTM</th>
+                    <th>Transformer</th>
+                    <th>What It Means</th>
+                </tr>
+                <tr>
+                    <td>Points MAE</td>
+                    <td>2.99</td>
+                    <td>2.93</td>
+                    <td>Predictions within 3 points of actual</td>
+                </tr>
+                <tr>
+                    <td>Points R²</td>
+                    <td>0.723</td>
+                    <td>0.740</td>
+                    <td>72-74% of variance explained</td>
+                </tr>
+                <tr>
+                    <td>Rebounds MAE</td>
+                    <td>1.40</td>
+                    <td>1.39</td>
+                    <td>Within 1.5 rebounds</td>
+                </tr>
+                <tr>
+                    <td>Assists MAE</td>
+                    <td>1.02</td>
+                    <td>0.98</td>
+                    <td>Within 1 assist</td>
+                </tr>
+            </table>
+            <div class="highlight" style="margin-top: 30px; text-align: center;">
+                <p style="font-size: 1.6rem;">Ensemble approach (averaging both models) provides most robust predictions</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 6: Live Demo -->
+    <div class="slide" id="slide6">
+        <div class="content" style="text-align: center;">
+            <h1>🎯 Live Demo</h1>
+            <p style="font-size: 1.8rem; margin-bottom: 30px;">Streamlit Application Walkthrough</p>
+            <div class="card" style="text-align: left;">
+                <h3>Demo Features</h3>
+                <ul>
+                    <li>Player selection from all available players</li>
+                    <li>Real-time predictions (PTS, REB, AST, Fantasy)</li>
+                    <li>Model comparison: LSTM vs Transformer vs Ensemble</li>
+                    <li>Player stats and recent game history</li>
+                    <li>Visual prediction comparison charts</li>
+                </ul>
+            </div>
+            <p style="margin-top: 30px; color: #00d4ff; font-size: 1.4rem;">streamlit run app/streamlit_app.py</p>
+        </div>
+    </div>
+
+    <!-- Slide 7: Business Value -->
+    <div class="slide" id="slide7">
+        <div class="content">
+            <h1>Business Applicability</h1>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                <div class="metric">
+                    <div class="value">$30B</div>
+                    <div class="label">Sports Analytics Market</div>
+                </div>
+                <div class="metric">
+                    <div class="value">62M</div>
+                    <div class="label">Fantasy Sports Users (NA)</div>
+                </div>
+                <div class="metric">
+                    <div class="value">2-3 hrs</div>
+                    <div class="label">Daily Research Saved</div>
+                </div>
+            </div>
+            <div class="two-col" style="margin-top: 30px;">
+                <div class="card">
+                    <h3>Value Propositions</h3>
+                    <ul>
+                        <li>Time savings: Minutes vs hours</li>
+                        <li>Cost: Fraction of competitors</li>
+                        <li>Context-aware predictions</li>
+                        <li>Real-time API integration</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>Revenue Streams</h3>
+                    <ul>
+                        <li>Subscription tiers (Basic/Pro)</li>
+                        <li>API access licensing</li>
+                        <li>Platform partnerships</li>
+                        <li>Enterprise solutions</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 8: Roadmap -->
+    <div class="slide" id="slide8">
+        <div class="content">
+            <h1>Future Roadmap</h1>
+            <div class="two-col">
+                <div class="card">
+                    <h3>Short-Term (1-3 months)</h3>
+                    <ul>
+                        <li>Real-time injury integration</li>
+                        <li>Historical matchup visualization</li>
+                        <li>Mobile-responsive UI</li>
+                        <li>Lineup optimization endpoints</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>Long-Term (6-12 months)</h3>
+                    <ul>
+                        <li>Expand to NFL, MLB, NHL</li>
+                        <li>LLM-powered explanations</li>
+                        <li>Social/community features</li>
+                        <li>DFS platform integration</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 9: Technical Summary -->
+    <div class="slide" id="slide9">
+        <div class="content">
+            <h1>Technical Summary</h1>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
+                <div class="metric">
+                    <div class="value">50+</div>
+                    <div class="label">Features Engineered</div>
+                </div>
+                <div class="metric">
+                    <div class="value">2</div>
+                    <div class="label">Deep Learning Models</div>
+                </div>
+                <div class="metric">
+                    <div class="value">4,482</div>
+                    <div class="label">Training Samples</div>
+                </div>
+                <div class="metric">
+                    <div class="value">0.74</div>
+                    <div class="label">R² Score (Points)</div>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 30px;">
+                <h3>Tech Stack</h3>
+                <p><strong>Framework:</strong> PyTorch • <strong>API:</strong> FastAPI • <strong>Demo:</strong> Streamlit • <strong>Data:</strong> NBA Stats API, Pandas, NumPy</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 10: Thank You -->
+    <div class="slide title-slide" id="slide10">
+        <div class="content" style="text-align: center;">
+            <h1>Thank You! 🏀</h1>
+            <h2 style="color: #fff;">Questions?</h2>
+            <div style="margin-top: 50px;">
+                <div class="team-name">Team 6</div>
+                <p style="font-size: 1.5rem;">Paul Semaan • Kyler Sison</p>
+            </div>
+            <div class="card" style="margin-top: 40px; display: inline-block;">
+                <p><strong>GitHub:</strong> github.com/team6/nba-insights</p>
+                <p><strong>Demo:</strong> streamlit run app/streamlit_app.py</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav">
+        <button onclick="prevSlide()">◀ Prev</button>
+        <button onclick="nextSlide()">Next ▶</button>
+    </div>
+    <div class="slide-number" id="slideNum">1 / 10</div>
+
+    <script>
+        let currentSlide = 1;
+        const totalSlides = 10;
+
+        function showSlide(n) {
+            if (n < 1) n = 1;
+            if (n > totalSlides) n = totalSlides;
+            currentSlide = n;
+            document.querySelectorAll('.slide').forEach((s, i) => {
+                s.style.display = (i + 1 === n) ? 'flex' : 'none';
+            });
+            document.getElementById('slideNum').textContent = n + ' / ' + totalSlides;
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+            if (e.key === 'ArrowLeft') prevSlide();
+        });
+
+        showSlide(1);
+    </script>
+</body>
+</html>
